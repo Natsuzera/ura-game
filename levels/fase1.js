@@ -18,29 +18,39 @@ let fase1 = {
     whileDetected: false,
     movimento: null,
     sequenciaDeMovimentos: null,
+    whileRep: 0,
+    contBlocoWhile: 0,
+    quantRept: 0,
 
     init: function () {
         // Tamanho dos blocos e dimensões do grid
         let tamanhoBloco = 75;
-        let numLinhas = Math.floor(900 / tamanhoBloco); // ajusta para o tamanho da tela
-        let numColunas = Math.floor(1440 / tamanhoBloco); // ajusta para o tamanho da tela
-
+        let numLinhas = Math.floor(900 / tamanhoBloco); 
+        let numColunas = Math.floor(1440 / tamanhoBloco); 
+    
         // Inicializa o cenário
         this.cenario = new Cenario(tamanhoBloco, numLinhas, numColunas);
-
-        //posição aleatória do robo
-        roboX = Math.floor((Math.random() * 12)) * 75 + 35 + 540;
-        roboY = Math.floor((Math.random() * 12)) * 75 + 35 - 9;
+    
+        // Função para garantir que o robo/tesouro caia em uma célula livre
+        const posicaoLivre = () => {
+            let x, y;
+            do {
+                x = Math.floor(Math.random() * numColunas);
+                y = Math.floor(Math.random() * numLinhas);
+            } while (this.cenario.grid[y][x] !== 0); // Verifica se a célula é um caminho (0)
+            return [x * tamanhoBloco + 35 + 540, y * tamanhoBloco + 35];
+        };
+    
+        // Posição aleatória do robô em uma célula livre
+        [roboX, roboY] = posicaoLivre();
         this.robot = new Robot(roboX, roboY, 75);
+    
         this.blocos = new blocoManager();
-
         this.blocoPadrao();
-
         this.blocos.concluirInicializacao();
-
-        //posição aleatória do bau
-        this.eixoX = Math.floor((Math.random() * 12)) * 75 + 540 + 35;
-        this.eixoY = Math.floor((Math.random() * 12)) * 75 + 35;
+    
+        // Posição aleatória do baú em uma célula livre
+        [this.eixoX, this.eixoY] = posicaoLivre();
     },
 
     draw: function () {
@@ -49,6 +59,7 @@ let fase1 = {
         this.robot.display(); //função que exibe o robo
         image(this.bau, this.eixoX, this.eixoY, 75, 70); //exibe o bau
         this.blocos.displayblocos(); //função que exibe os blocos
+        this.blocos.drawWhileRepeat();
         this.displayUI(); //função que exibe a interface do usuário
 
         if (this.isDrawing) {
@@ -58,12 +69,12 @@ let fase1 = {
         if (this.robot.isMoving) {
             this.robot.move(false);
             if (this.cenario.verificarColisao(this.robot)) {
-                console.log("O robô colidiu com um obstáculo!");
-                this.sequenciaDeMovimentos = [];
-                this.whileDetected = false;
-                this.reinitialize(); // Reinicializa se houver colisão
-                this.robot.move(true);
-                return;
+                //console.log("O robô colidiu com um obstáculo!");
+                //this.sequenciaDeMovimentos = [];
+                //this.whileDetected = false;
+                //this.reinitialize(); // Reinicializa se houver colisão
+                //this.robot.move(true);
+                //return;
             }
         }
     },
@@ -124,6 +135,9 @@ let fase1 = {
             this.habilitarMovimento();
             this.somTocando = false;
         }
+        if(this.blocos.numWhileRepeat(mouseX, mouseY)){
+            this.whileRep += 1;
+        }
     },
 
     blocoPadrao: function () {
@@ -133,8 +147,9 @@ let fase1 = {
         this.blocos.addbloco(240, 140-20, 180, 40, "While"); // While
     },
     habilitarMovimento: function () {
-        this.sequenciaDeMovimentos = this.blocos.getMovementSequence();
+        [this.sequenciaDeMovimentos, this.contBlocoWhile] = this.blocos.getMovementSequence();
         this.executeMovementSequence();
+        
     },
 
     executeMovementSequence: function () {
@@ -151,15 +166,21 @@ let fase1 = {
         this.movimento = this.sequenciaDeMovimentos.shift();
 
         //repete o movimento quando while é detectado
-        if(this.whileDetected == true && this.movimento.type != "while"){
+        if(this.whileDetected == true && this.movimento.type != "while" && this.quantRept > 0){
             console.log("While detected");
-            this.sequenciaDeMovimentos.push(this.movimento);
+            this.sequenciaDeMovimentos.splice(this.contBlocoWhile-1, 0 , this.movimento);
+            console.log(this.sequenciaDeMovimentos);
+            this.quantRept -= 1;
+            console.log(`quantRept: ${this.quantRept}`);
             this.verificarVitoria();
         }
-
+        console.log(this.whileRep);
         //detecta o while
         if(this.movimento.type == "while"){
             this.whileDetected = true;
+            console.log(`whileRep: ${this.whileRep}`);
+            console.log(`contBlocoWhile: ${this.contBlocoWhile}`);
+            this.quantRept = this.whileRep*this.contBlocoWhile;
         }
         
         console.log(this.movimento);
@@ -201,6 +222,9 @@ let fase1 = {
         mudanca_tela(tela_winner);
     },
     reinitialize: function () {
+        this.whileRep = 0;
+        this.contBlocoWhile = 0;
+        this.quantRept = 0
         this.sequenciaDeMovimentos = [];
         this.blocos.inicializacao = false; //para entender melhor o bloco de inicialização, ver bloco.js e o README
         this.blocos.clear();
