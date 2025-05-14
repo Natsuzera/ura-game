@@ -8,6 +8,10 @@ let fase1 = {
     blocosList: null, // Nossa lista ligada para a sequência
     templateBlocks: [], // Array para guardar os blocos padrão (templates)
 
+    // NOVAS PROPRIEDADES PARA CONTROLE DA SEQUÊNCIA COM DELTATIME
+    isExecutingSequence: false, // true quando a sequência está rodando
+    actionTimer: 0,             // Temporizador para a ação atual (em milissegundos)
+
     // Variáveis de estado para arrastar/soltar
     draggingTemplateType: null, // Guarda o 'text' do template sendo arrastado
     draggingSequenceBlock: null, // Guarda a REFERÊNCIA ao bloco da sequência sendo arrastado
@@ -102,13 +106,26 @@ let fase1 = {
     draw: function () {
         background("#fff");
         imageMode(CENTER);
+        /*
         console.log("Lateral bg dimensions:",
             this.textura_lateral_background.width,
             this.textura_lateral_background.height);
+        */
         image(this.textura_lateral_background, 270, 450, 540, 900); // Desenha a textura de fundo | parametros: (imagem, x, y, largura, altura)
         this.cenario.exibirCenario(this.textura_background);
         this.robot.display();
         image(this.bau, this.eixoX, this.eixoY, 75, 70); // Use image() para p5.js
+
+        // --- LÓGICA DE EXECUÇÃO DA SEQUÊNCIA DE MOVIMENTOS ---
+        if (this.isExecutingSequence) {
+            this.actionTimer -= deltaTime; // deltaTime é fornecido pelo p5.js em milissegundos
+
+            if (this.actionTimer <= 0) {
+                // O tempo para a ação atual (ou o delay antes da primeira) acabou.
+                // Processa o próximo movimento.
+                this.executeMovementSequence();
+            }
+        }
 
         // --- Desenhar Blocos ---
         // 1. Desenha os blocos template
@@ -360,19 +377,29 @@ let fase1 = {
     },
 
     habilitarMovimento: function () {
-        // Obtem a sequência da lista ligada
         this.sequenciaDeMovimentos = this.blocosList.getMovementSequence();
-        // Você pode precisar obter contagens ou outras informações aqui também
-        // [this.sequenciaDeMovimentos, this.contBlocoWhile] = this.blocosList.getMovementSequence(); // Se retornar mais dados
-        this.executeMovementSequence();
+        // [this.sequenciaDeMovimentos, this.contBlocoWhile] = this.blocosList.getMovementSequence(); // Se você precisa de mais dados
+
+        if (this.sequenciaDeMovimentos && this.sequenciaDeMovimentos.length > 0) {
+            console.log("Iniciando sequência de movimentos.");
+            this.isExecutingSequence = true;
+            this.actionTimer = 0; // Define como 0 para que o primeiro movimento seja processado imediatamente no próximo 'draw'
+            // Não chamamos mais this.executeMovementSequence() diretamente daqui.
+        } else {
+            console.log("Sequência de movimentos vazia. Verificando vitória.");
+            this.verificarVitoria(); // Verifica vitória mesmo se não houver movimentos
+            this.blocosList.clear(); // Limpa a lista de blocos
+        }
+        this.somTocando = false; // Como no seu código original
     },
 
     executeMovementSequence: function () {
-        if (!this.sequenciaDeMovimentos || this.sequenciaDeMovimentos.length === 0) {
-            console.log("Sequência concluída ou vazia.");
+        // Verifica se ainda há movimentos ou se a sequência foi interrompida
+        if (!this.isExecutingSequence || !this.sequenciaDeMovimentos || this.sequenciaDeMovimentos.length === 0) {
+            console.log("Sequência concluída ou interrompida.");
+            this.isExecutingSequence = false; // Garante que parou
             this.verificarVitoria();
             this.blocosList.clear(); // Limpa a lista de blocos
-            // Não chamar reinitialize aqui automaticamente, talvez o usuário queira ver o resultado
             return;
         }
 
@@ -382,14 +409,19 @@ let fase1 = {
 
         if (this.movimento.type === "move") {
             this.robot.moverPara(this.movimento.steps); // Assumindo que Robot tem moverPara
-            setTimeout(() => this.executeMovementSequence(), 1505 * this.movimento.steps); // Ajustar delay
+            // Define a duração desta ação. O próximo 'executeMovementSequence' será chamado após este tempo.
+            this.actionTimer = 1505 * this.movimento.steps;
         } else if (this.movimento.type === "rotate") {
             this.robot.rotacionar(this.movimento.direction); // Assumindo que Robot tem rotacionar
-            setTimeout(() => this.executeMovementSequence(), 602); // Ajustar delay
+            this.actionTimer = 602; // Duração desta ação
         } else {
             console.warn("Tipo de movimento desconhecido:", this.movimento.type);
-            this.executeMovementSequence(); // Pula para o próximo
+            this.actionTimer = 0; // Pula para o próximo movimento imediatamente no próximo ciclo do draw
         }
+
+        // Se, após pegar um movimento, a sequência ficar vazia E o actionTimer for 0 (para tipos desconhecidos, por exemplo),
+        // precisamos garantir que a verificação de vitória ocorra.
+        // No entanto, a lógica principal de conclusão já está no início da função e no loop do draw.
     },
 
     verificarVitoria: function () {
@@ -408,6 +440,7 @@ let fase1 = {
     tela_vitoria: function () {
         // Sua função tela_vitoria existente...
         if (!this.somTocando && this.win_sound) {
+            this.win_sound.setVolume(0.1);
             this.win_sound.play();
             this.somTocando = true;
         }
@@ -418,11 +451,16 @@ let fase1 = {
 
     reinitialize: function () {
         console.log("Reinicializando fase...");
-        // Limpa a sequência de blocos na lista ligada
         
         this.blocosList.clear();
+        // this.robot.move(true); // Se move(true) reseta a posição do robô
+        // É importante resetar a posição do robô para o início.
+        // Se o seu init() já define a posição inicial, e Robot tem um método resetPosition:
+        // this.robot.resetPosition(); ou this.robot.x = this.initialRoboX; this.robot.y = this.initialRoboY;
+        // Ou chame parte da lógica do seu init() que posiciona o robô.
+        // Pelo seu código, this.robot.move(true) parece ser seu método de reset.
         this.robot.move(true);
-        this.robot.robotSound(true);
+        this.robot.robotSound(true); // Presumo que isso pare sons ou faça um som de reset
 
         // Reseta variáveis de estado da execução
         this.whileRep = 0;
@@ -432,6 +470,10 @@ let fase1 = {
         this.whileDetected = false;
         this.movimento = null;
         this.somTocando = false;
+
+        // ADICIONAR ESTAS LINHAS PARA RESETAR O CONTROLE DA SEQUÊNCIA
+        this.isExecutingSequence = false;
+        this.actionTimer = 0;
 
         console.log("Fase reinicializada.");
     }
